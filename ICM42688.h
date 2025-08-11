@@ -97,6 +97,9 @@ class ICM42688 {
      *
      * @return     ret < 0 if error
      */
+
+	ICM42688(SPI_HandleTypeDef* spi_pin, GPIO_TypeDef* gpio_type, uint32_t gpio_pin);
+
 	int begin();
 
 	/**
@@ -289,6 +292,11 @@ class ICM42688 {
 	bool                      _useSPIHS     = false;
 	static constexpr uint32_t SPI_LS_CLOCK  = 1'000'000;  // 1 MHz
 	uint32_t                  _spi_hs_clock = 8'000'000;  // 8 MHz
+
+	//SPI通信追加
+	SPI_HandleTypeDef* _spi_pin;
+	GPIO_TypeDef* _gpio_type;
+	uint32_t _gpio_pin;
 
 	// buffer for reading from sensor
 	uint8_t _buffer[15] = {};

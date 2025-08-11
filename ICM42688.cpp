@@ -31,12 +31,21 @@ ICM42688::ICM42688(TwoWire& bus, uint8_t address, uint8_t sda_pin, uint8_t scl_p
 }
 
 /* ICM42688 object, input the SPI bus and chip select pin */
-ICM42688::ICM42688(SPIClass& bus, uint8_t csPin, uint32_t spi_hs_clock)
+//ICM42688::ICM42688(SPIClass& bus, uint8_t csPin, uint32_t spi_hs_clock)
+//{
+//	_spi          = &bus;   // SPI bus
+//	_csPin        = csPin;  // chip select pin
+//	_useSPI       = true;   // set to use SPI
+//	_spi_hs_clock = spi_hs_clock;
+//}
+
+//新SPIコンストラクタ
+ICM42688::ICM42688(SPI_HandleTypeDef* spi_pin, GPIO_TypeDef* gpio_type, uint32_t gpio_pin)
 {
-	_spi          = &bus;   // SPI bus
-	_csPin        = csPin;  // chip select pin
-	_useSPI       = true;   // set to use SPI
-	_spi_hs_clock = spi_hs_clock;
+    _spi_pin = spi_pin;
+    _gpio_type = gpio_type;
+    _gpio_pin = gpio_pin;
+    _useSPI = true;
 }
 
 /* starts communication with the ICM42688 */
@@ -730,46 +739,80 @@ void ICM42688::setAccelCalZ(float bias, float scaleFactor)
 }
 
 /* writes a byte to ICM42688 register given a register address and data */
-//int ICM42688::writeRegister(uint8_t subAddress, uint8_t data)
-//{
+int ICM42688::writeRegister(uint8_t subAddress, uint8_t data)
+{
 //	/* write data to device */
-//	if (_useSPI)
-//	{
+	if (_useSPI)
+	{
+		uint8_t tx_tmp[2] = {};
+
+		tx_tmp[0] = (uint8_t)subAddress | 0x00;
+		tx_tmp[1] = data;
+
+		HAL_GPIO_WritePin(_gpio_type, _gpio_pin, GPIO_PIN_RESET);
+
+		HAL_SPI_Transmit(_spi_pin, tx_tmp, 2, 10);
+
+		HAL_GPIO_WritePin(_gpio_type, _gpio_pin, GPIO_PIN_SET);
+
 //		_spi->beginTransaction(SPISettings(SPI_LS_CLOCK, MSBFIRST, SPI_MODE3));  // begin the transaction
 //		digitalWrite(_csPin, LOW);                                               // select the ICM42688 chip
 //		_spi->transfer(subAddress);                                              // write the register address
 //		_spi->transfer(data);                                                    // write the data
 //		digitalWrite(_csPin, HIGH);                                              // deselect the ICM42688 chip
 //		_spi->endTransaction();                                                  // end the transaction
-//	}
-//	else
-//	{
+	}
+	else
+	{
+		HAL_I2C_Mem_Write(_i2c, _address, subAddress, 1, &data, 1, 1000);
+
 //		_i2c->beginTransmission(_address);                                       // open the device
 //		_i2c->write(subAddress);                                                 // write the register address
 //		_i2c->write(data);                                                       // write the data
 //		_i2c->endTransmission();
-//	}
+	}
 //
-//	delay(10);
+	delay(10);
 //
 //	/* read back the register */
-//	readRegisters(subAddress, 1, _buffer);
+	readRegisters(subAddress, 1, _buffer);
 //	/* check the read back register against the written register */
-//	if (_buffer[0] == data)
-//	{
-//		return 1;
-//	}
-//	else
-//	{
-//		return -1;
-//	}
-//}
+	if (_buffer[0] == data)
+	{
+		return 1;
+	}
+	else
+	{
+		return -1;
+	}
+}
 
 /* reads registers from ICM42688 given a starting register address, number of bytes, and a pointer to store data */
-//int ICM42688::readRegisters(uint8_t subAddress, uint8_t count, uint8_t* dest)
-//{
-//	if (_useSPI)
-//	{
+int ICM42688::readRegisters(uint8_t subAddress, uint8_t count, uint8_t* dest)
+{
+	if (_useSPI)
+	{
+		uint8_t tx_buffer[2] = {};
+		uint8_t rx_buffer[2] = {};
+
+		//読み取るレジスタアドレスの数だけ繰り返す
+		for(uint8_t i=0; i < count; i++)
+		{
+
+		    tx_buffer[0] = (subAddress + i) | 0x00;//読み取りたいレジスタのアドレス
+		    tx_buffer[1] = 0x00;//からのデータ
+		    //CSピンをLOWにする(通信開始)
+		    HAL_GPIO_WritePin(_gpio_type, _gpio_pin, GPIO_PIN_RESET);
+
+		    //アドレスの送信とデータの受信
+		    HAL_SPI_TransmitReceive(_spi_pin, tx_buffer, rx_buffer, 2, 1000);
+
+		    //CSピンをHIGHにする(通信終了)
+		    HAL_GPIO_WritePin(_gpio_type, _gpio_pin, GPIO_PIN_SET);
+
+		    //受信したデータを取得(2番目の要素に入る)
+		    dest[i] = rx_buffer[1];
+		}
 //		// begin the transaction
 //		if (_useSPIHS)
 //		{
@@ -787,10 +830,13 @@ void ICM42688::setAccelCalZ(float bias, float scaleFactor)
 //		}
 //		digitalWrite(_csPin, HIGH);                      // deselect the ICM42688 chip
 //		_spi->endTransaction();                          // end the transaction
-//		return 1;
-//	}
-//	else
-//	{
+		return 1;
+	}
+	else
+	{
+		HAL_I2C_Mem_Read(_i2c, _address, subAddress, 1, dest, count, 1000);
+
+		return 1;
 //		_i2c->beginTransmission(_address);               // open the device
 //		_i2c->write(subAddress);                         // specify the starting register address
 //		_i2c->endTransmission(false);
@@ -807,8 +853,8 @@ void ICM42688::setAccelCalZ(float bias, float scaleFactor)
 //		{
 //			return -1;
 //		}
-//	}
-//}
+	}
+}
 
 int ICM42688::setBank(uint8_t bank)
 {
